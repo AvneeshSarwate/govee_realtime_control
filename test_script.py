@@ -9,41 +9,41 @@ import logging
 from govee_led_wez import GoveeController, GoveeDevice, GoveeColor
 
 async def control_lights():
-    """Main function to discover and control Govee devices"""
     controller = GoveeController()
-    discovered_devices = []
+    discovered_devices = set()  # Use set to prevent duplicates
 
     def device_found(device: GoveeDevice):
-        """Callback for newly discovered devices"""
-        print(f"Discovered: ({device.device_id})")
-        discovered_devices.append(device)
+        """Callback with duplicate prevention"""
+        if device.device_id not in discovered_devices:
+            print(f"Discovered: {device.device_id}")
+            discovered_devices.add(device.device_id)
 
-    # Configure discovery callback
     controller.set_device_change_callback(device_found)
     
     try:
-        # Start LAN discovery
+        print("Starting discovery...")
         controller.start_lan_poller()
-        print("Scanning network for Govee devices (15s)...")
         
-        # Allow time for discovery
-        await asyncio.sleep(15)
+        # Limited discovery window
+        await asyncio.sleep(5)
+        #set device change callback to none
+        controller.set_device_change_callback(None)
         
         if not discovered_devices:
-            print("No devices found. Verify:")
-            print("- Devices are powered on")
-            print("- LAN control enabled in Govee Home app")
-            print("- Connected to same 2.4GHz network")
+            print("No devices found")
             return
 
-        # Set all found devices to red
-        for device in discovered_devices:
-            print(f"Attempting color change for {device.device_id}")
+        # Get fresh device objects from controller
+        active_devices = [d for d in controller.devices.values() 
+                         if d.device_id in discovered_devices]
+        
+        # Single-pass color change
+        for device in active_devices:
+            print(f"Processing {device.device_id}")
             success = await controller.set_color(
                 device,
-                GoveeColor(255, 0, 0)  # Red values
+                GoveeColor(255, 0, 0)
             )
-            
             if success:
                 print(f"Success: ({device.device_id}) set to red")
             else:
@@ -51,7 +51,7 @@ async def control_lights():
 
     finally:
         controller.stop()
-        print("Controller shutdown complete")
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
